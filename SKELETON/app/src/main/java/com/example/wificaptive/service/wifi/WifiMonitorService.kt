@@ -26,7 +26,10 @@ import com.example.wificaptive.ui.MainActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.isActive
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -38,10 +41,24 @@ class WifiMonitorService : Service() {
     private var currentSsid: String? = null
     private var lastTriggeredProfile: String? = null
     private var lastTriggerTime: Long = 0
+    private var lastDisconnectTime: Long = 0
+    private var validationJob: Job? = null
+    private var activeProfile: PortalProfile? = null
 
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
+            val wasDisconnected = currentSsid == null
             checkWifiAndTrigger()
+            
+            // If reconnecting to same SSID and reconnection handling is enabled
+            if (wasDisconnected && activeProfile != null && activeProfile!!.enableReconnectionHandling) {
+                val now = System.currentTimeMillis()
+                // If disconnected recently (within last 30 seconds), treat as reconnection
+                if ((now - lastDisconnectTime) < 30000) {
+                    android.util.Log.d(TAG, "Reconnection detected, re-triggering portal")
+                    activeProfile?.let { triggerPortal(it) }
+                }
+            }
         }
 
         override fun onCapabilitiesChanged(
@@ -51,6 +68,14 @@ class WifiMonitorService : Service() {
             if (networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
                 checkWifiAndTrigger()
             }
+        }
+
+        override fun onLost(network: Network) {
+            lastDisconnectTime = System.currentTimeMillis()
+            currentSsid = null
+            activeProfile = null
+            validationJob?.cancel()
+            validationJob = null
         }
     }
 
@@ -106,9 +131,20 @@ class WifiMonitorService : Service() {
                         return@launch
                     }
                     
+                    activeProfile = matchingProfile
                     triggerPortal(matchingProfile)
                     lastTriggeredProfile = matchingProfile.id
                     lastTriggerTime = now
+                    
+                    // Start periodic connectivity validation if enabled
+                    if (matchingProfile.enableConnectivityValidation) {
+                        startConnectivityValidation(matchingProfile)
+                    }
+                } else {
+                    // No matching profile, stop validation
+                    validationJob?.cancel()
+                    validationJob = null
+                    activeProfile = null
                 }
             } catch (e: Exception) {
                 android.util.Log.e(TAG, "Error checking Wi-Fi", e)
@@ -154,6 +190,50 @@ class WifiMonitorService : Service() {
                 PortalAccessibilityService.triggerPortalHandling(profile)
             } catch (e: Exception) {
                 android.util.Log.e(TAG, "Error triggering portal", e)
+            }
+        }
+    }
+
+    private fun startConnectivityValidation(profile: PortalProfile) {
+        // Cancel existing validation job
+        validationJob?.cancel()
+        
+        validationJob = serviceScope.launch(Dispatchers.IO) {
+            while (isActive && activeProfile?.id == profile.id) {
+                delay(profile.validationIntervalMs)
+                
+                if (!isActive) break
+                
+                // Check if we're still connected to the same SSID
+                val currentSsid = getCurrentSsid()
+                if (currentSsid == null || !matchesSsid(profile, currentSsid)) {
+                    break
+                }
+                
+                // Validate connectivity by checking if captive portal is active
+                try {
+                    val url = URL(profile.triggerUrl)
+                    val connection = url.openConnection() as HttpURLConnection
+                    connection.use {
+                        it.connectTimeout = 5000
+                        it.readTimeout = 5000
+                        it.instanceFollowRedirects = false
+                        it.connect()
+                        
+                        val responseCode = it.responseCode
+                        // If we get redirected (302/307) or get a captive portal response, re-trigger
+                        if (responseCode == HttpURLConnection.HTTP_MOVED_TEMP || 
+                            responseCode == HttpURLConnection.HTTP_SEE_OTHER ||
+                            (responseCode == HttpURLConnection.HTTP_OK && it.url.toString() != profile.triggerUrl)) {
+                            android.util.Log.d(TAG, "Connectivity validation detected portal, re-triggering")
+                            triggerPortal(profile)
+                        }
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.d(TAG, "Connectivity validation check failed", e)
+                    // If connection fails, might need to re-authenticate
+                    triggerPortal(profile)
+                }
             }
         }
     }

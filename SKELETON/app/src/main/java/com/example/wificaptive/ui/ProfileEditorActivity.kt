@@ -29,6 +29,10 @@ class ProfileEditorActivity : AppCompatActivity() {
     private lateinit var editTextTimeout: TextInputEditText
     private lateinit var editTextCooldown: TextInputEditText
     private lateinit var switchEnabled: Switch
+    private lateinit var switchEnableConnectivityValidation: Switch
+    private lateinit var layoutValidationInterval: com.google.android.material.textfield.TextInputLayout
+    private lateinit var editTextValidationInterval: TextInputEditText
+    private lateinit var switchEnableReconnectionHandling: Switch
     private lateinit var buttonSave: Button
     private lateinit var buttonDelete: Button
     
@@ -60,8 +64,17 @@ class ProfileEditorActivity : AppCompatActivity() {
         editTextTimeout = findViewById(R.id.editTextTimeout)
         editTextCooldown = findViewById(R.id.editTextCooldown)
         switchEnabled = findViewById(R.id.switchEnabled)
+        switchEnableConnectivityValidation = findViewById(R.id.switchEnableConnectivityValidation)
+        layoutValidationInterval = findViewById(R.id.layoutValidationInterval)
+        editTextValidationInterval = findViewById(R.id.editTextValidationInterval)
+        switchEnableReconnectionHandling = findViewById(R.id.switchEnableReconnectionHandling)
         buttonSave = findViewById(R.id.buttonSave)
         buttonDelete = findViewById(R.id.buttonDelete)
+
+        // Show/hide validation interval based on connectivity validation switch
+        switchEnableConnectivityValidation.setOnCheckedChangeListener { _, isChecked ->
+            layoutValidationInterval.visibility = if (isChecked) android.view.View.VISIBLE else android.view.View.GONE
+        }
 
         buttonSave.setOnClickListener { saveProfile() }
         buttonDelete.setOnClickListener { deleteProfile() }
@@ -112,6 +125,10 @@ class ProfileEditorActivity : AppCompatActivity() {
         editTextTimeout.setText(profile.timeoutMs.toString())
         editTextCooldown.setText(profile.cooldownMs.toString())
         switchEnabled.isChecked = profile.enabled
+        switchEnableConnectivityValidation.isChecked = profile.enableConnectivityValidation
+        editTextValidationInterval.setText((profile.validationIntervalMs / 60000).toString()) // Convert to minutes
+        layoutValidationInterval.visibility = if (profile.enableConnectivityValidation) android.view.View.VISIBLE else android.view.View.GONE
+        switchEnableReconnectionHandling.isChecked = profile.enableReconnectionHandling
     }
 
     private fun saveProfile() {
@@ -127,6 +144,8 @@ class ProfileEditorActivity : AppCompatActivity() {
 
         val timeout = timeoutText?.toLongOrNull() ?: 10000L
         val cooldown = cooldownText?.toLongOrNull() ?: 5000L
+        val validationIntervalMinutes = editTextValidationInterval.text?.toString()?.trim()?.toLongOrNull() ?: 5L
+        val validationIntervalMs = validationIntervalMinutes * 60000L // Convert to milliseconds
 
         val matchType = when (spinnerMatchType.selectedItemPosition) {
             0 -> MatchType.EXACT
@@ -152,7 +171,10 @@ class ProfileEditorActivity : AppCompatActivity() {
             clickTextContains = clickTextContains,
             timeoutMs = timeout,
             cooldownMs = cooldown,
-            enabled = switchEnabled.isChecked
+            enabled = switchEnabled.isChecked,
+            enableConnectivityValidation = switchEnableConnectivityValidation.isChecked,
+            validationIntervalMs = validationIntervalMs,
+            enableReconnectionHandling = switchEnableReconnectionHandling.isChecked
         ) ?: PortalProfile(
             id = UUID.randomUUID().toString(),
             ssid = ssid,
@@ -162,7 +184,10 @@ class ProfileEditorActivity : AppCompatActivity() {
             clickTextContains = clickTextContains,
             timeoutMs = timeout,
             cooldownMs = cooldown,
-            enabled = switchEnabled.isChecked
+            enabled = switchEnabled.isChecked,
+            enableConnectivityValidation = switchEnableConnectivityValidation.isChecked,
+            validationIntervalMs = validationIntervalMs,
+            enableReconnectionHandling = switchEnableReconnectionHandling.isChecked
         )
 
         activityScope.launch {

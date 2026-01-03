@@ -1,13 +1,21 @@
 package com.example.wificaptive.service.accessibility
 
 import android.accessibilityservice.AccessibilityService
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Context
+import android.content.Intent
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import androidx.core.app.NotificationCompat
+import com.example.wificaptive.R
 import com.example.wificaptive.core.profile.PortalProfile
+import com.example.wificaptive.ui.MainActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -21,6 +29,9 @@ class PortalAccessibilityService : AccessibilityService() {
     private var currentProfile: PortalProfile? = null
     private var isProcessing = AtomicBoolean(false)
     private var clickPerformed = AtomicBoolean(false)
+    private var retryAttempts = AtomicBoolean(false)
+    private var retryCount = 0
+    private val MAX_RETRIES = 3
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
         if (currentProfile == null || isProcessing.get()) {
@@ -44,7 +55,7 @@ class PortalAccessibilityService : AccessibilityService() {
             if (isProcessing.compareAndSet(false, true)) {
                 try {
                     delay(500) // Small delay to let UI settle
-                    attemptClick(profile)
+                    attemptClickWithRetry(profile)
                 } finally {
                     isProcessing.set(false)
                 }
@@ -56,27 +67,61 @@ class PortalAccessibilityService : AccessibilityService() {
         Log.d(TAG, "Accessibility service interrupted")
     }
 
-    private suspend fun attemptClick(profile: PortalProfile) {
-        val rootNode = rootInActiveWindow ?: return
+    private suspend fun attemptClickWithRetry(profile: PortalProfile) {
+        retryCount = 0
+        retryAttempts.set(false)
+        
+        while (retryCount < MAX_RETRIES && !clickPerformed.get()) {
+            val success = attemptClick(profile)
+            
+            if (success) {
+                clickPerformed.set(true)
+                showSuccessNotification(profile)
+                Log.d(TAG, "Successfully clicked portal button")
+                
+                // Reset after timeout
+                delay(profile.timeoutMs)
+                resetState()
+                return
+            }
+            
+            // If failed and we have retries left, wait and retry
+            if (retryCount < MAX_RETRIES - 1) {
+                retryCount++
+                val delayMs = if (retryCount == 1) 1000L else 2000L // 1s, then 2s
+                Log.d(TAG, "Click attempt $retryCount failed, retrying in ${delayMs}ms...")
+                delay(delayMs)
+            } else {
+                retryCount++
+            }
+        }
+        
+        // If we exhausted retries, show failure notification
+        if (!clickPerformed.get()) {
+            showFailureNotification(profile)
+            Log.w(TAG, "Failed to click portal button after $MAX_RETRIES attempts")
+            resetState()
+        }
+    }
+    
+    private suspend fun attemptClick(profile: PortalProfile): Boolean {
+        val rootNode = rootInActiveWindow ?: return false
         
         try {
             val targetNode = findClickableNode(rootNode, profile)
             if (targetNode != null) {
                 try {
                     performClick(targetNode)
-                    clickPerformed.set(true)
-                    Log.d(TAG, "Successfully clicked portal button")
-                    
-                    // Reset after timeout
-                    delay(profile.timeoutMs)
-                    resetState()
+                    return true
                 } finally {
                     // Always recycle the targetNode after use
                     recycleNode(targetNode)
                 }
             }
+            return false
         } catch (e: Exception) {
             Log.e(TAG, "Error attempting click", e)
+            return false
         } finally {
             recycleNode(rootNode)
         }
@@ -184,6 +229,8 @@ class PortalAccessibilityService : AccessibilityService() {
         currentProfile = null
         clickPerformed.set(false)
         isProcessing.set(false)
+        retryCount = 0
+        retryAttempts.set(false)
     }
 
     /**
@@ -202,10 +249,77 @@ class PortalAccessibilityService : AccessibilityService() {
         currentProfile = profile
         clickPerformed.set(false)
         isProcessing.set(false)
+        retryCount = 0
+        retryAttempts.set(false)
+    }
+    
+    private fun showSuccessNotification(profile: PortalProfile) {
+        try {
+            createNotificationChannel()
+            val intent = Intent(this, MainActivity::class.java)
+            val pendingIntent = PendingIntent.getActivity(
+                this, 0, intent,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+
+            val notification = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+                .setContentTitle("Portal Auto-Login")
+                .setContentText("Successfully connected to ${profile.ssid}")
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentIntent(pendingIntent)
+                .setAutoCancel(true)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .build()
+
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.notify(NOTIFICATION_ID_SUCCESS, notification)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error showing success notification", e)
+        }
+    }
+    
+    private fun showFailureNotification(profile: PortalProfile) {
+        try {
+            createNotificationChannel()
+            val intent = Intent(this, MainActivity::class.java)
+            val pendingIntent = PendingIntent.getActivity(
+                this, 0, intent,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+
+            val notification = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+                .setContentTitle("Portal Auto-Login Failed")
+                .setContentText("Could not auto-login to ${profile.ssid}. Please try manually.")
+                .setSmallIcon(android.R.drawable.ic_dialog_alert)
+                .setContentIntent(pendingIntent)
+                .setAutoCancel(true)
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .build()
+
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.notify(NOTIFICATION_ID_FAILURE, notification)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error showing failure notification", e)
+        }
+    }
+    
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                NOTIFICATION_CHANNEL_ID,
+                "Portal Auto-Login",
+                NotificationManager.IMPORTANCE_LOW
+            )
+            val notificationManager = getSystemService(NotificationManager::class.java)
+            notificationManager.createNotificationChannel(channel)
+        }
     }
 
     companion object {
         private const val TAG = "PortalAccessibilityService"
+        private const val NOTIFICATION_CHANNEL_ID = "portal_autologin_channel"
+        private const val NOTIFICATION_ID_SUCCESS = 1001
+        private const val NOTIFICATION_ID_FAILURE = 1002
         private var instance: PortalAccessibilityService? = null
 
         fun triggerPortalHandling(profile: PortalProfile) {

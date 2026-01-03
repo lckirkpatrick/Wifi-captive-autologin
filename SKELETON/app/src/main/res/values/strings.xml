@@ -13,6 +13,9 @@
     <string name="profile_timeout">Timeout (ms)</string>
     <string name="profile_cooldown">Cooldown (ms)</string>
     <string name="profile_enabled">Enabled</string>
+    <string name="profile_enable_connectivity_validation">Enable Connectivity Validation</string>
+    <string name="profile_validation_interval">Validation Interval (minutes)</string>
+    <string name="profile_enable_reconnection_handling">Enable Reconnection Handling</string>
     <string name="save">Save</string>
     <string name="cancel">Cancel</string>
     <string name="delete">Delete</string>

@@ -12,7 +12,10 @@ data class PortalProfile(
     val clickTextContains: List<String>,
     val timeoutMs: Long,
     val cooldownMs: Long,
-    val enabled: Boolean
+    val enabled: Boolean,
+    val enableConnectivityValidation: Boolean = false,
+    val validationIntervalMs: Long = 300000L, // 5 minutes default
+    val enableReconnectionHandling: Boolean = false
 )
 
 @Serializable
