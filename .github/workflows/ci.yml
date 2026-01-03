@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [ dev, stage, main ]
+  pull_request:
+    branches: [ dev, stage, main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up JDK
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+    
+    - name: Grant execute permission for gradlew
+      run: chmod +x android/gradlew
+      working-directory: .
+    
+    - name: Run lint
+      run: ./gradlew lintDebug
+      working-directory: android
+    
+    - name: Run unit tests
+      run: ./gradlew testDebugUnitTest
+      working-directory: android
+    
+    - name: Generate coverage report
+      run: ./gradlew jacocoTestReport
+      working-directory: android
+      continue-on-error: true
+    
+    - name: Upload coverage reports
+      uses: codecov/codecov-action@v4
+      with:
+        directory: android/app/build/reports/jacoco
+        fail_ci_if_error: false
+        token: ${{ secrets.CODECOV_TOKEN }}
+      continue-on-error: true
+    
+    - name: Build APK
+      run: ./gradlew assembleDebug
+      working-directory: android
+    
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: app-debug
+        path: android/app/build/outputs/apk/debug/app-debug.apk
+        retention-days: 7
+

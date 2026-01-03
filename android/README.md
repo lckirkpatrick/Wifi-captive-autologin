@@ -123,26 +123,32 @@ The app comes with two default profiles:
 # Run unit tests
 ./gradlew testDebugUnitTest
 
-# Run lint check
+# Run tests with coverage report
+./gradlew testDebugUnitTest jacocoTestReport
+# View report: open app/build/reports/jacoco/jacocoTestReport/html/index.html
+
+# Run Android lint check
 ./gradlew lintDebug
 
 # Security scan
 ./security-scan.sh
 
 # Full CI check (clean, lint, test, build)
-./gradlew clean lintDebug testDebugUnitTest assembleDebug
+./gradlew clean lintDebug testDebugUnitTest jacocoTestReport assembleDebug
 ```
 
 ### Pre-commit Hook
 
 A git pre-commit hook is configured to automatically run quality checks before each commit:
 
-- **Lint checks** - Ensures code quality standards
+- **Android Lint** - Ensures code quality standards
 - **Unit tests** - Verifies all tests pass
 
 The hook will **block commits** if:
 - Lint errors are found
 - Unit tests fail
+
+**Note:** ktlint (code style) can be added later as an optional enhancement. Android Lint already provides good code quality checks.
 
 To bypass (not recommended):
 ```bash
