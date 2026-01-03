@@ -14,6 +14,47 @@
 3. Build the project (Build → Make Project)
 4. Run on an emulator or physical device
 
+### Building an APK
+
+#### Debug APK (for testing)
+
+**Method 1: Using Build Menu**
+1. Go to **Build → Build Bundle(s) / APK(s) → Build APK(s)**
+2. Wait for the build to complete
+3. Click "locate" in the notification when it appears
+4. The APK will be at: `app/build/outputs/apk/debug/app-debug.apk`
+
+**Method 2: Using Gradle**
+1. Open Gradle tool window (View → Tool Windows → Gradle)
+2. Navigate to: `android` → `app` → `Tasks` → `build`
+3. Double-click `assembleDebug`
+4. Find the APK at: `app/build/outputs/apk/debug/app-debug.apk`
+
+#### Release APK (for distribution/Play Store)
+
+**First time setup (create signing key):**
+1. Go to **Build → Generate Signed Bundle / APK**
+2. Select **APK** → Click **Next**
+3. Click **Create new...** to create a new keystore
+4. Fill in the keystore information:
+   - Key store path: Choose a secure location
+   - Password: Create a strong password
+   - Key alias: e.g., "wificaptive"
+   - Key password: Create a strong password
+   - Validity: 25+ years recommended
+   - Certificate information: Fill in your details
+5. Click **OK** and save the keystore file securely (you'll need it for updates)
+
+**Build signed release APK:**
+1. Go to **Build → Generate Signed Bundle / APK**
+2. Select **APK** → Click **Next**
+3. Select your keystore file and enter passwords
+4. Select **release** build variant
+5. Click **Finish**
+6. The signed APK will be at: `app/build/outputs/apk/release/app-release.apk`
+
+**Note:** Keep your keystore file and passwords secure! You'll need them for all future app updates.
+
 ### Required Permissions
 
 The app requires the following permissions:
