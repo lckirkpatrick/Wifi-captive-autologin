@@ -1,15 +1,8 @@
 // Top-level build file
-buildscript {
-    ext.kotlin_version = "1.9.20"
-    repositories {
-        google()
-        mavenCentral()
-    }
-    dependencies {
-        classpath "com.android.tools.build:gradle:8.1.2"
-        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
-        classpath "org.jetbrains.kotlin:kotlin-serialization:$kotlin_version"
-    }
+plugins {
+    id 'com.android.application' apply false
+    id 'org.jetbrains.kotlin.android' apply false
+    id 'org.jetbrains.kotlin.plugin.serialization' apply false
 }
 
 task clean(type: Delete) {
