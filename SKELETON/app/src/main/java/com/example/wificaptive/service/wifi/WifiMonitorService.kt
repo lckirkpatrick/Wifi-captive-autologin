@@ -143,11 +143,12 @@ class WifiMonitorService : Service() {
                 // Trigger the captive portal by making a request
                 val url = URL(profile.triggerUrl)
                 val connection = url.openConnection() as HttpURLConnection
-                connection.connectTimeout = 5000
-                connection.readTimeout = 5000
-                connection.instanceFollowRedirects = false
-                connection.connect()
-                connection.disconnect()
+                connection.use {
+                    it.connectTimeout = 5000
+                    it.readTimeout = 5000
+                    it.instanceFollowRedirects = false
+                    it.connect()
+                }
                 
                 // Notify accessibility service
                 PortalAccessibilityService.triggerPortalHandling(profile)

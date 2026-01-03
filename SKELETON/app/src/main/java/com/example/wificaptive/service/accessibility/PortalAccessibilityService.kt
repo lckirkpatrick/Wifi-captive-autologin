@@ -1,6 +1,7 @@
 package com.example.wificaptive.service.accessibility
 
 import android.accessibilityservice.AccessibilityService
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -72,7 +73,7 @@ class PortalAccessibilityService : AccessibilityService() {
         } catch (e: Exception) {
             Log.e(TAG, "Error attempting click", e)
         } finally {
-            rootNode.recycle()
+            recycleNode(rootNode)
         }
     }
 
@@ -82,6 +83,9 @@ class PortalAccessibilityService : AccessibilityService() {
             val node = findNodeByText(root, exactText, exact = true)
             if (node != null && node.isClickable) {
                 return node
+            } else if (node != null) {
+                // Recycle node if it's not clickable
+                recycleNode(node)
             }
         }
 
@@ -90,6 +94,9 @@ class PortalAccessibilityService : AccessibilityService() {
             val node = findNodeByText(root, containsText, exact = false)
             if (node != null && node.isClickable) {
                 return node
+            } else if (node != null) {
+                // Recycle node if it's not clickable
+                recycleNode(node)
             }
         }
 
@@ -103,9 +110,12 @@ class PortalAccessibilityService : AccessibilityService() {
     ): AccessibilityNodeInfo? {
         val queue = mutableListOf<AccessibilityNodeInfo>()
         queue.add(root)
+        var isRoot = true
 
         while (queue.isNotEmpty()) {
             val node = queue.removeAt(0)
+            val wasRoot = isRoot
+            isRoot = false
             
             val nodeText = node.text?.toString() ?: ""
             val contentDescription = node.contentDescription?.toString() ?: ""
@@ -119,14 +129,22 @@ class PortalAccessibilityService : AccessibilityService() {
             }
 
             if (matches && node.isClickable) {
+                // Recycle all remaining nodes in queue before returning
+                queue.forEach { recycleNode(it) }
                 return node
             }
 
+            // Add children to queue
             for (i in 0 until node.childCount) {
                 val child = node.getChild(i)
                 if (child != null) {
                     queue.add(child)
                 }
+            }
+            
+            // Recycle the current node if it's not the root and we're not returning it
+            if (!wasRoot) {
+                recycleNode(node)
             }
         }
 
@@ -142,12 +160,12 @@ class PortalAccessibilityService : AccessibilityService() {
             while (parent != null) {
                 if (parent.isClickable) {
                     parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                    parent.recycle()
+                    recycleNode(parent)
                     return
                 }
                 val oldParent = parent
                 parent = parent.parent
-                oldParent.recycle()
+                recycleNode(oldParent)
             }
         }
     }
@@ -156,6 +174,18 @@ class PortalAccessibilityService : AccessibilityService() {
         currentProfile = null
         clickPerformed.set(false)
         isProcessing.set(false)
+    }
+
+    /**
+     * Safely recycle an AccessibilityNodeInfo.
+     * recycle() is deprecated in API 33+ but still safe to call (it's a no-op).
+     * We call it unconditionally for consistency across all API levels.
+     */
+    @Suppress("DEPRECATION")
+    private fun recycleNode(node: AccessibilityNodeInfo) {
+        // recycle() is required for API < 33 to prevent memory leaks.
+        // On API 33+, it's a no-op but safe to call for consistency.
+        node.recycle()
     }
 
     fun setCurrentProfile(profile: PortalProfile) {
