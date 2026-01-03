@@ -2,9 +2,6 @@
 <resources>
     <string name="app_name">WiFi Captive Auto-Login</string>
     <string name="accessibility_service_description">Automatically accepts captive portal terms by clicking accept buttons.</string>
-    <string name="profiles_title">Portal Profiles</string>
-    <string name="add_profile">Add Profile</string>
-    <string name="edit_profile">Edit Profile</string>
     <string name="profile_ssid">SSID</string>
     <string name="profile_match_type">Match Type</string>
     <string name="profile_trigger_url">Trigger URL</string>
@@ -17,7 +14,6 @@
     <string name="profile_validation_interval">Validation Interval (minutes)</string>
     <string name="profile_enable_reconnection_handling">Enable Reconnection Handling</string>
     <string name="save">Save</string>
-    <string name="cancel">Cancel</string>
     <string name="delete">Delete</string>
     <string name="no_profiles">No profiles configured</string>
     <string name="enable_accessibility">Please enable accessibility service in settings</string>

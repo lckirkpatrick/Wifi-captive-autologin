@@ -114,3 +114,58 @@ The app comes with two default profiles:
 - Only one click is performed per portal session (enforced by cooldown)
 - Profiles are stored locally in JSON format
 - The accessibility service only interacts with clickable elements matching the configured text
+
+## Development & Quality Assurance
+
+### Quick Commands
+
+```bash
+# Run unit tests
+./gradlew testDebugUnitTest
+
+# Run lint check
+./gradlew lintDebug
+
+# Security scan
+./security-scan.sh
+
+# Full CI check (clean, lint, test, build)
+./gradlew clean lintDebug testDebugUnitTest assembleDebug
+```
+
+### Pre-commit Hook
+
+A git pre-commit hook is configured to automatically run quality checks before each commit:
+
+- **Lint checks** - Ensures code quality standards
+- **Unit tests** - Verifies all tests pass
+
+The hook will **block commits** if:
+- Lint errors are found
+- Unit tests fail
+
+To bypass (not recommended):
+```bash
+git commit --no-verify
+```
+
+### Testing
+
+See `README-TESTING.md` for detailed testing documentation including:
+- Unit test structure
+- Running tests with coverage
+- Lint configuration
+- Security scanning details
+
+### Security Scanning
+
+Run the security scan script to check for:
+- Hardcoded secrets (passwords, API keys)
+- Debug logging in production code
+- Insecure HTTP URLs
+- Manifest security issues
+- Exported components without proper permissions
+
+```bash
+./security-scan.sh
+```

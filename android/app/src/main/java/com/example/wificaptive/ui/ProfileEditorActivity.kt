@@ -1,11 +1,20 @@
 package com.example.wificaptive.ui
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.net.wifi.WifiManager
+import android.os.Build
 import android.os.Bundle
+import android.widget.ArrayAdapter
+import android.widget.AutoCompleteTextView
 import android.widget.Button
 import android.widget.Spinner
 import android.widget.Switch
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import com.example.wificaptive.R
 import com.example.wificaptive.core.profile.MatchType
 import com.example.wificaptive.core.profile.PortalProfile
@@ -21,7 +30,7 @@ class ProfileEditorActivity : AppCompatActivity() {
     private val activityScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private lateinit var profileStorage: ProfileStorage
     
-    private lateinit var editTextSsid: TextInputEditText
+    private lateinit var editTextSsid: AutoCompleteTextView
     private lateinit var spinnerMatchType: Spinner
     private lateinit var editTextTriggerUrl: TextInputEditText
     private lateinit var editTextClickTextExact: TextInputEditText
@@ -48,6 +57,35 @@ class ProfileEditorActivity : AppCompatActivity() {
         setupViews()
         setupSpinner()
         loadProfile()
+        
+        // Request location permission if needed for Wi-Fi scanning
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            if (ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.ACCESS_FINE_LOCATION
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
+                    REQUEST_LOCATION_PERMISSION
+                )
+            }
+        }
+    }
+    
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_LOCATION_PERMISSION && grantResults.isNotEmpty() &&
+            grantResults[0] == PackageManager.PERMISSION_GRANTED
+        ) {
+            // Permission granted, refresh Wi-Fi networks
+            setupWifiNetworkDropdown()
+        }
     }
 
     private fun setupToolbar() {
@@ -78,6 +116,134 @@ class ProfileEditorActivity : AppCompatActivity() {
 
         buttonSave.setOnClickListener { saveProfile() }
         buttonDelete.setOnClickListener { deleteProfile() }
+        
+        // Setup Wi-Fi network dropdown
+        setupWifiNetworkDropdown()
+    }
+    
+    private fun setupWifiNetworkDropdown() {
+        activityScope.launch(Dispatchers.IO) {
+            val wifiNetworks = getAvailableWifiNetworks()
+            launch(Dispatchers.Main) {
+                if (wifiNetworks.isNotEmpty()) {
+                    val adapter = ArrayAdapter(
+                        this@ProfileEditorActivity,
+                        android.R.layout.simple_dropdown_item_1line,
+                        wifiNetworks
+                    )
+                    editTextSsid.setAdapter(adapter)
+                    editTextSsid.threshold = 1
+                    
+                    // Also add click listener to the end icon for manual selection
+                    val layoutSsid = findViewById<com.google.android.material.textfield.TextInputLayout>(R.id.layoutSsid)
+                    layoutSsid.setEndIconOnClickListener {
+                        showWifiNetworkDialog(wifiNetworks)
+                    }
+                }
+            }
+        }
+    }
+    
+    private fun getAvailableWifiNetworks(): List<String> {
+        val networks = mutableSetOf<String>()
+        
+        try {
+            val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+            if (wifiManager != null) {
+                // Check permissions
+                val hasLocationPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    ContextCompat.checkSelfPermission(
+                        this,
+                        Manifest.permission.ACCESS_FINE_LOCATION
+                    ) == PackageManager.PERMISSION_GRANTED
+                } else {
+                    true
+                }
+                
+                if (hasLocationPermission) {
+                    // Get configured networks (saved networks)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        if (ActivityCompat.checkSelfPermission(
+                                this,
+                                Manifest.permission.ACCESS_FINE_LOCATION
+                            ) == PackageManager.PERMISSION_GRANTED
+                        ) {
+                            val configuredNetworks = wifiManager.configuredNetworks
+                            configuredNetworks?.forEach { network ->
+                                network.SSID?.removeSurrounding("\"")?.let { ssid ->
+                                    if (ssid.isNotEmpty()) {
+                                        networks.add(ssid)
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        val configuredNetworks = wifiManager.configuredNetworks
+                        configuredNetworks?.forEach { network ->
+                            network.SSID?.removeSurrounding("\"")?.let { ssid ->
+                                if (ssid.isNotEmpty()) {
+                                    networks.add(ssid)
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Trigger a scan if possible
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        if (ActivityCompat.checkSelfPermission(
+                                this,
+                                Manifest.permission.ACCESS_FINE_LOCATION
+                            ) == PackageManager.PERMISSION_GRANTED
+                        ) {
+                            wifiManager.startScan()
+                        }
+                    } else {
+                        wifiManager.startScan()
+                    }
+                    
+                    // Get scan results (available networks)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        if (ActivityCompat.checkSelfPermission(
+                                this,
+                                Manifest.permission.ACCESS_FINE_LOCATION
+                            ) == PackageManager.PERMISSION_GRANTED
+                        ) {
+                            val scanResults = wifiManager.scanResults
+                            scanResults?.forEach { result ->
+                                result.SSID?.let { ssid ->
+                                    if (ssid.isNotEmpty() && ssid != "<unknown ssid>") {
+                                        networks.add(ssid)
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        val scanResults = wifiManager.scanResults
+                        scanResults?.forEach { result ->
+                            result.SSID?.let { ssid ->
+                                if (ssid.isNotEmpty() && ssid != "<unknown ssid>") {
+                                    networks.add(ssid)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("ProfileEditor", "Error getting Wi-Fi networks", e)
+        }
+        
+        return networks.sorted()
+    }
+    
+    private fun showWifiNetworkDialog(networks: List<String>) {
+        AlertDialog.Builder(this)
+            .setTitle("Select Wi-Fi Network")
+            .setItems(networks.toTypedArray()) { _, which ->
+                editTextSsid.setText(networks[which])
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun setupSpinner() {
@@ -231,6 +397,7 @@ class ProfileEditorActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_PROFILE_ID = "profile_id"
+        private const val REQUEST_LOCATION_PERMISSION = 1001
     }
 }
 

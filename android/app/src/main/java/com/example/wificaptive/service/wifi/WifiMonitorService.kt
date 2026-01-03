@@ -5,10 +5,8 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -110,7 +108,7 @@ class WifiMonitorService : Service() {
     }
 
     private fun checkWifiAndTrigger() {
-        serviceScope.launch {
+        serviceScope.launch(Dispatchers.IO) {
             try {
                 val ssid = getCurrentSsid()
                 if (ssid == null || ssid == currentSsid) {
@@ -175,21 +173,22 @@ class WifiMonitorService : Service() {
 
     private fun triggerPortal(profile: PortalProfile) {
         serviceScope.launch(Dispatchers.IO) {
+            var connection: HttpURLConnection? = null
             try {
                 // Trigger the captive portal by making a request
                 val url = URL(profile.triggerUrl)
-                val connection = url.openConnection() as HttpURLConnection
-                connection.use {
-                    it.connectTimeout = 5000
-                    it.readTimeout = 5000
-                    it.instanceFollowRedirects = false
-                    it.connect()
-                }
+                connection = url.openConnection() as HttpURLConnection
+                connection.connectTimeout = 5000
+                connection.readTimeout = 5000
+                connection.instanceFollowRedirects = false
+                connection.connect()
                 
                 // Notify accessibility service
                 PortalAccessibilityService.triggerPortalHandling(profile)
             } catch (e: Exception) {
                 android.util.Log.e(TAG, "Error triggering portal", e)
+            } finally {
+                connection?.disconnect()
             }
         }
     }
@@ -211,28 +210,29 @@ class WifiMonitorService : Service() {
                 }
                 
                 // Validate connectivity by checking if captive portal is active
+                var connection: HttpURLConnection? = null
                 try {
                     val url = URL(profile.triggerUrl)
-                    val connection = url.openConnection() as HttpURLConnection
-                    connection.use {
-                        it.connectTimeout = 5000
-                        it.readTimeout = 5000
-                        it.instanceFollowRedirects = false
-                        it.connect()
-                        
-                        val responseCode = it.responseCode
-                        // If we get redirected (302/307) or get a captive portal response, re-trigger
-                        if (responseCode == HttpURLConnection.HTTP_MOVED_TEMP || 
-                            responseCode == HttpURLConnection.HTTP_SEE_OTHER ||
-                            (responseCode == HttpURLConnection.HTTP_OK && it.url.toString() != profile.triggerUrl)) {
-                            android.util.Log.d(TAG, "Connectivity validation detected portal, re-triggering")
-                            triggerPortal(profile)
-                        }
+                    connection = url.openConnection() as HttpURLConnection
+                    connection.connectTimeout = 5000
+                    connection.readTimeout = 5000
+                    connection.instanceFollowRedirects = false
+                    connection.connect()
+                    
+                    val responseCode = connection.responseCode
+                    // If we get redirected (302/307) or get a captive portal response, re-trigger
+                    if (responseCode == HttpURLConnection.HTTP_MOVED_TEMP || 
+                        responseCode == HttpURLConnection.HTTP_SEE_OTHER ||
+                        (responseCode == HttpURLConnection.HTTP_OK && connection.url.toString() != profile.triggerUrl)) {
+                        android.util.Log.d(TAG, "Connectivity validation detected portal, re-triggering")
+                        triggerPortal(profile)
                     }
                 } catch (e: Exception) {
                     android.util.Log.d(TAG, "Connectivity validation check failed", e)
                     // If connection fails, might need to re-authenticate
                     triggerPortal(profile)
+                } finally {
+                    connection?.disconnect()
                 }
             }
         }
