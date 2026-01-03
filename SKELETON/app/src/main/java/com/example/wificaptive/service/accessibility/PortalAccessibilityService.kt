@@ -62,13 +62,18 @@ class PortalAccessibilityService : AccessibilityService() {
         try {
             val targetNode = findClickableNode(rootNode, profile)
             if (targetNode != null) {
-                performClick(targetNode)
-                clickPerformed.set(true)
-                Log.d(TAG, "Successfully clicked portal button")
-                
-                // Reset after timeout
-                delay(profile.timeoutMs)
-                resetState()
+                try {
+                    performClick(targetNode)
+                    clickPerformed.set(true)
+                    Log.d(TAG, "Successfully clicked portal button")
+                    
+                    // Reset after timeout
+                    delay(profile.timeoutMs)
+                    resetState()
+                } finally {
+                    // Always recycle the targetNode after use
+                    recycleNode(targetNode)
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error attempting click", e)
@@ -154,6 +159,7 @@ class PortalAccessibilityService : AccessibilityService() {
     private fun performClick(node: AccessibilityNodeInfo) {
         if (node.isClickable) {
             node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            // Note: node recycling is handled by the caller (attemptClick)
         } else {
             // Try to find parent that's clickable
             var parent = node.parent
@@ -161,12 +167,16 @@ class PortalAccessibilityService : AccessibilityService() {
                 if (parent.isClickable) {
                     parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)
                     recycleNode(parent)
+                    // Recycle the original node since we found a clickable parent
+                    recycleNode(node)
                     return
                 }
                 val oldParent = parent
                 parent = parent.parent
                 recycleNode(oldParent)
             }
+            // If no clickable parent found, recycle the original node
+            recycleNode(node)
         }
     }
 
