@@ -23,6 +23,12 @@ class ProfileStorage(private val context: Context) {
         File(context.filesDir, "profiles.json")
     }
     
+    // Encryption helper (only used if supported)
+    private val encryptionHelper: EncryptionHelper? by lazy {
+        val helper = EncryptionHelper(context)
+        if (helper.isEncryptionSupported()) helper else null
+    }
+    
     // In-memory cache for profiles
     @Volatile
     private var cachedProfiles: List<PortalProfile>? = null
@@ -55,12 +61,16 @@ class ProfileStorage(private val context: Context) {
                 saveProfilesToDisk(defaultProfiles)
                 return@withContext defaultProfiles
             }
-            val jsonString = profilesFile.readText()
+            var jsonString = profilesFile.readText()
             if (jsonString.isBlank()) {
                 val defaultProfiles = getDefaultProfiles()
                 saveProfilesToDisk(defaultProfiles)
                 return@withContext defaultProfiles
             }
+            
+            // Decrypt if encryption is supported and data appears encrypted
+            jsonString = decryptIfNeeded(jsonString)
+            
             json.decodeFromString<List<PortalProfile>>(jsonString)
         } catch (e: SerializationException) {
             // If deserialization fails, return defaults
@@ -104,7 +114,11 @@ class ProfileStorage(private val context: Context) {
     
     private suspend fun saveProfilesToDisk(profiles: List<PortalProfile>) = withContext(Dispatchers.IO) {
         try {
-            val jsonString = json.encodeToString(profiles)
+            var jsonString = json.encodeToString(profiles)
+            
+            // Encrypt if encryption is supported
+            jsonString = encryptIfNeeded(jsonString)
+            
             profilesFile.writeText(jsonString)
         } catch (e: SerializationException) {
             throw ProfileSaveException("Failed to serialize profiles: ${e.message}", e)
@@ -123,6 +137,53 @@ class ProfileStorage(private val context: Context) {
             cachedProfiles = null
             cacheTimestamp = 0
         }
+    }
+    
+    /**
+     * Encrypts data if encryption is supported
+     */
+    private fun encryptIfNeeded(data: String): String {
+        return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M && encryptionHelper != null) {
+            try {
+                encryptionHelper!!.encrypt(data)
+            } catch (e: Exception) {
+                // If encryption fails, fall back to unencrypted storage
+                android.util.Log.w("ProfileStorage", "Encryption failed, using unencrypted storage: ${e.message}")
+                data
+            }
+        } else {
+            data
+        }
+    }
+    
+    /**
+     * Decrypts data if it appears to be encrypted
+     */
+    private fun decryptIfNeeded(data: String): String {
+        // Check if data looks encrypted (Base64 encoded, longer than typical JSON)
+        // Simple heuristic: if it's much longer than expected and Base64-like, try decrypting
+        return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M && 
+                   encryptionHelper != null && 
+                   data.length > 200 && // Encrypted data is typically much longer
+                   isBase64Like(data)) {
+            try {
+                encryptionHelper!!.decrypt(data)
+            } catch (e: Exception) {
+                // If decryption fails, assume it's unencrypted data
+                android.util.Log.w("ProfileStorage", "Decryption failed, assuming unencrypted: ${e.message}")
+                data
+            }
+        } else {
+            data
+        }
+    }
+    
+    /**
+     * Simple check if string looks like Base64
+     */
+    private fun isBase64Like(data: String): Boolean {
+        // Base64 strings are typically longer and contain only Base64 characters
+        return data.length > 100 && data.matches(Regex("^[A-Za-z0-9+/=]+$"))
     }
 
     suspend fun addProfile(profile: PortalProfile) = withContext(Dispatchers.IO) {
