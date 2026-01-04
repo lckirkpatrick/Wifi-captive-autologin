@@ -16,6 +16,11 @@ import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.example.wificaptive.R
+import com.example.wificaptive.core.driver.DriverRegistry
+import com.example.wificaptive.core.error.ConnectivityCheckException
+import com.example.wificaptive.core.error.NetworkException
+import com.example.wificaptive.core.error.PortalTriggerException
+import com.example.wificaptive.core.error.ProfileLoadException
 import com.example.wificaptive.core.profile.PortalProfile
 import com.example.wificaptive.core.profile.matchesSsid
 import com.example.wificaptive.core.storage.ProfileStorage
@@ -31,6 +36,18 @@ import kotlinx.coroutines.isActive
 import java.net.HttpURLConnection
 import java.net.URL
 
+/**
+ * Foreground service that monitors Wi-Fi connections and triggers
+ * captive portal automation when a matching profile is detected.
+ * 
+ * This service:
+ * - Monitors network state changes via ConnectivityManager
+ * - Detects when connected to a Wi-Fi network matching a profile
+ * - Triggers the captive portal by making HTTP requests
+ * - Optionally validates connectivity and handles reconnections
+ * 
+ * The service runs in the foreground with a persistent notification.
+ */
 class WifiMonitorService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private lateinit var profileStorage: ProfileStorage
@@ -42,19 +59,25 @@ class WifiMonitorService : Service() {
     private var lastDisconnectTime: Long = 0
     private var validationJob: Job? = null
     private var activeProfile: PortalProfile? = null
+    
+    // Debouncing for network state changes
+    private var debounceJob: Job? = null
+    private val NETWORK_DEBOUNCE_MS = 1000L // 1 second debounce
 
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
-            val wasDisconnected = currentSsid == null
-            checkWifiAndTrigger()
-            
-            // If reconnecting to same SSID and reconnection handling is enabled
-            if (wasDisconnected && activeProfile != null && activeProfile!!.enableReconnectionHandling) {
-                val now = System.currentTimeMillis()
-                // If disconnected recently (within last 30 seconds), treat as reconnection
-                if ((now - lastDisconnectTime) < 30000) {
-                    android.util.Log.d(TAG, "Reconnection detected, re-triggering portal")
-                    activeProfile?.let { triggerPortal(it) }
+            debounceNetworkChange {
+                val wasDisconnected = currentSsid == null
+                checkWifiAndTrigger()
+                
+                // If reconnecting to same SSID and reconnection handling is enabled
+                if (wasDisconnected && activeProfile != null && activeProfile!!.enableReconnectionHandling) {
+                    val now = System.currentTimeMillis()
+                    // If disconnected recently (within last 30 seconds), treat as reconnection
+                    if ((now - lastDisconnectTime) < 30000) {
+                        android.util.Log.d(TAG, "Reconnection detected, re-triggering portal")
+                        activeProfile?.let { triggerPortal(it) }
+                    }
                 }
             }
         }
@@ -64,7 +87,9 @@ class WifiMonitorService : Service() {
             networkCapabilities: NetworkCapabilities
         ) {
             if (networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
-                checkWifiAndTrigger()
+                debounceNetworkChange {
+                    checkWifiAndTrigger()
+                }
             }
         }
 
@@ -105,6 +130,19 @@ class WifiMonitorService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         connectivityManager.unregisterNetworkCallback(networkCallback)
+        debounceJob?.cancel()
+        validationJob?.cancel()
+    }
+    
+    /**
+     * Debounce network state changes to prevent rapid repeated triggers
+     */
+    private fun debounceNetworkChange(action: suspend () -> Unit) {
+        debounceJob?.cancel()
+        debounceJob = serviceScope.launch(Dispatchers.IO) {
+            delay(NETWORK_DEBOUNCE_MS)
+            action()
+        }
     }
 
     private fun checkWifiAndTrigger() {
@@ -116,7 +154,13 @@ class WifiMonitorService : Service() {
                 }
                 
                 currentSsid = ssid
-                val profiles = profileStorage.loadProfiles()
+                val profiles = try {
+                    profileStorage.loadProfiles()
+                } catch (e: ProfileLoadException) {
+                    // Log error but continue with empty list
+                    android.util.Log.e(TAG, "Failed to load profiles: ${e.message}", e)
+                    emptyList()
+                }
                 val matchingProfile = profiles.firstOrNull { profile ->
                     profile.enabled && matchesSsid(profile, ssid)
                 }
@@ -144,8 +188,10 @@ class WifiMonitorService : Service() {
                     validationJob = null
                     activeProfile = null
                 }
+            } catch (e: ProfileLoadException) {
+                android.util.Log.e(TAG, "Error loading profiles: ${e.message}", e)
             } catch (e: Exception) {
-                android.util.Log.e(TAG, "Error checking Wi-Fi", e)
+                android.util.Log.e(TAG, "Error checking Wi-Fi: ${e.message}", e)
             }
         }
     }
@@ -183,10 +229,22 @@ class WifiMonitorService : Service() {
                 connection.instanceFollowRedirects = false
                 connection.connect()
                 
-                // Notify accessibility service
-                PortalAccessibilityService.triggerPortalHandling(profile)
+                // Use driver registry to handle portal
+                val driver = DriverRegistry.getDefaultDriver()
+                if (driver != null && driver.isAvailable()) {
+                    driver.handlePortal(profile)
+                } else {
+                    // Fallback to direct accessibility service call for backward compatibility
+                    PortalAccessibilityService.triggerPortalHandling(profile)
+                }
+            } catch (e: java.net.SocketTimeoutException) {
+                throw PortalTriggerException("Connection timeout while triggering portal", e)
+            } catch (e: java.net.UnknownHostException) {
+                throw PortalTriggerException("Cannot resolve host: ${profile.triggerUrl}", e)
+            } catch (e: java.io.IOException) {
+                throw PortalTriggerException("Network I/O error: ${e.message}", e)
             } catch (e: Exception) {
-                android.util.Log.e(TAG, "Error triggering portal", e)
+                throw PortalTriggerException("Unexpected error triggering portal: ${e.message}", e)
             } finally {
                 connection?.disconnect()
             }
@@ -228,9 +286,14 @@ class WifiMonitorService : Service() {
                         triggerPortal(profile)
                     }
                 } catch (e: Exception) {
-                    android.util.Log.d(TAG, "Connectivity validation check failed", e)
+                    // Log connectivity check failure but don't throw - this is expected if portal is active
+                    android.util.Log.d(TAG, "Connectivity validation check failed: ${e.message}", e)
                     // If connection fails, might need to re-authenticate
-                    triggerPortal(profile)
+                    try {
+                        triggerPortal(profile)
+                    } catch (triggerException: PortalTriggerException) {
+                        android.util.Log.e(TAG, "Failed to re-trigger portal after connectivity check: ${triggerException.message}", triggerException)
+                    }
                 } finally {
                     connection?.disconnect()
                 }

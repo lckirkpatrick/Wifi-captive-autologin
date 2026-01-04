@@ -16,6 +16,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.example.wificaptive.R
+import com.example.wificaptive.core.error.AppException
+import com.example.wificaptive.core.error.MissingRequiredFieldException
 import com.example.wificaptive.core.profile.MatchType
 import com.example.wificaptive.core.profile.PortalProfile
 import com.example.wificaptive.core.storage.ProfileStorage
@@ -26,6 +28,17 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import java.util.UUID
 
+/**
+ * Activity for creating or editing portal profiles.
+ * 
+ * Provides a form interface for configuring:
+ * - SSID matching (with dropdown of known networks)
+ * - Match type (EXACT, CONTAINS, REGEX)
+ * - Trigger URL
+ * - Click text patterns
+ * - Timeouts and cooldowns
+ * - Advanced options (connectivity validation, reconnection handling)
+ */
 class ProfileEditorActivity : AppCompatActivity() {
     private val activityScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private lateinit var profileStorage: ProfileStorage
@@ -56,7 +69,25 @@ class ProfileEditorActivity : AppCompatActivity() {
         setupToolbar()
         setupViews()
         setupSpinner()
-        loadProfile()
+        
+        val profileId = intent.getStringExtra(EXTRA_PROFILE_ID)
+        val templateName = intent.getStringExtra(EXTRA_TEMPLATE_NAME)
+        
+        if (profileId != null) {
+            // Editing existing profile
+            loadProfile(profileId)
+        } else if (templateName != null) {
+            // Creating from template
+            val template = com.example.wificaptive.core.profile.ProfileTemplates.getTemplate(templateName)
+            if (template != null) {
+                setupFromTemplate(template)
+            } else {
+                setupNewProfile()
+            }
+        } else {
+            // Creating new profile
+            setupNewProfile()
+        }
         
         // Request location permission if needed for Wi-Fi scanning
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -257,23 +288,47 @@ class ProfileEditorActivity : AppCompatActivity() {
         spinnerMatchType.adapter = adapter
     }
 
-    private fun loadProfile() {
-        val profileId = intent.getStringExtra(EXTRA_PROFILE_ID)
-        if (profileId != null) {
-            activityScope.launch {
-                val profiles = profileStorage.loadProfiles()
-                currentProfile = profiles.firstOrNull { it.id == profileId }
-                currentProfile?.let { populateFields(it) }
-                
-                if (currentProfile == null) {
-                    finish()
-                } else {
-                    buttonDelete.visibility = android.view.View.VISIBLE
-                }
+    private fun loadProfile(profileId: String) {
+        activityScope.launch {
+            val profiles = profileStorage.loadProfiles()
+            currentProfile = profiles.firstOrNull { it.id == profileId }
+            currentProfile?.let { populateFields(it) }
+            
+            if (currentProfile == null) {
+                finish()
+            } else {
+                buttonDelete.visibility = android.view.View.VISIBLE
             }
-        } else {
-            buttonDelete.visibility = android.view.View.GONE
         }
+    }
+    
+    private fun setupNewProfile() {
+        // Initialize with default values
+        buttonDelete.visibility = android.view.View.GONE
+        switchEnabled.isChecked = true
+    }
+    
+    private fun setupFromTemplate(template: com.example.wificaptive.core.profile.ProfileTemplate) {
+        // Populate fields from template
+        editTextSsid.setText(template.defaultSsid)
+        
+        val matchTypePosition = when (template.matchType) {
+            MatchType.EXACT -> 0
+            MatchType.CONTAINS -> 1
+            MatchType.REGEX -> 2
+        }
+        spinnerMatchType.setSelection(matchTypePosition)
+        
+        editTextTriggerUrl.setText(template.triggerUrl)
+        editTextClickTextExact.setText(template.clickTextExact ?: "")
+        editTextClickTextContains.setText(template.clickTextContains.joinToString(", "))
+        editTextTimeout.setText(template.timeoutMs.toString())
+        editTextCooldown.setText(template.cooldownMs.toString())
+        switchEnabled.isChecked = true
+        switchEnableConnectivityValidation.isChecked = template.enableConnectivityValidation
+        editTextValidationInterval.setText((template.validationIntervalMs / 60000).toString())
+        switchEnableReconnectionHandling.isChecked = template.enableReconnectionHandling
+        buttonDelete.visibility = android.view.View.GONE
     }
 
     private fun populateFields(profile: PortalProfile) {
@@ -303,8 +358,12 @@ class ProfileEditorActivity : AppCompatActivity() {
         val timeoutText = editTextTimeout.text?.toString()?.trim()
         val cooldownText = editTextCooldown.text?.toString()?.trim()
 
-        if (ssid.isNullOrEmpty() || triggerUrl.isNullOrEmpty()) {
-            showError("SSID and Trigger URL are required")
+        if (ssid.isNullOrEmpty()) {
+            showError(MissingRequiredFieldException("SSID").getUserMessage())
+            return
+        }
+        if (triggerUrl.isNullOrEmpty()) {
+            showError(MissingRequiredFieldException("Trigger URL").getUserMessage())
             return
         }
 
@@ -357,12 +416,18 @@ class ProfileEditorActivity : AppCompatActivity() {
         )
 
         activityScope.launch {
-            if (currentProfile == null) {
-                profileStorage.addProfile(profile)
-            } else {
-                profileStorage.updateProfile(profile)
+            try {
+                if (currentProfile == null) {
+                    profileStorage.addProfile(profile)
+                } else {
+                    profileStorage.updateProfile(profile)
+                }
+                finish()
+            } catch (e: AppException) {
+                showError(e.getUserMessage())
+            } catch (e: Exception) {
+                showError("Failed to save profile. Please try again.")
             }
-            finish()
         }
     }
 
@@ -374,8 +439,14 @@ class ProfileEditorActivity : AppCompatActivity() {
             .setMessage("Are you sure you want to delete this profile?")
             .setPositiveButton("Delete") { _, _ ->
                 activityScope.launch {
-                    profileStorage.deleteProfile(profile.id)
-                    finish()
+                    try {
+                        profileStorage.deleteProfile(profile.id)
+                        finish()
+                    } catch (e: AppException) {
+                        showError(e.getUserMessage())
+                    } catch (e: Exception) {
+                        showError("Failed to delete profile. Please try again.")
+                    }
                 }
             }
             .setNegativeButton("Cancel", null)
@@ -397,6 +468,7 @@ class ProfileEditorActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_PROFILE_ID = "profile_id"
+        const val EXTRA_TEMPLATE_NAME = "template_name"
         private const val REQUEST_LOCATION_PERMISSION = 1001
     }
 }

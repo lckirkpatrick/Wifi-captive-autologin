@@ -5,5 +5,9 @@
         android:id="@+id/menu_accessibility"
         android:title="Accessibility Settings"
         app:showAsAction="never" />
+    <item
+        android:id="@+id/action_template"
+        android:title="@string/use_template"
+        app:showAsAction="never" />
 </menu>
 

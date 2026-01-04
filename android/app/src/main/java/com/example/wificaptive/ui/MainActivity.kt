@@ -15,6 +15,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.wificaptive.R
+import com.example.wificaptive.core.error.AppException
 import com.example.wificaptive.core.profile.PortalProfile
 import com.example.wificaptive.core.storage.ProfileStorage
 import com.example.wificaptive.service.wifi.WifiMonitorService
@@ -30,17 +31,30 @@ class MainActivity : AppCompatActivity() {
     private lateinit var recyclerView: RecyclerView
     private lateinit var emptyView: TextView
     private lateinit var adapter: ProfileAdapter
+    private lateinit var accessibilityBanner: com.google.android.material.card.MaterialCardView
     private var profiles: List<PortalProfile> = emptyList()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // Check if onboarding is needed
+        val sharedPrefs = getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+        val onboardingCompleted = sharedPrefs.getBoolean("onboarding_completed", false)
+        
+        if (!onboardingCompleted) {
+            startActivity(Intent(this, OnboardingActivity::class.java))
+            finish()
+            return
+        }
+        
         setContentView(R.layout.activity_main)
-
+        
         profileStorage = ProfileStorage(applicationContext)
         
         setupToolbar()
         setupRecyclerView()
         setupFab()
+        setupAccessibilityBanner()
         
         checkAccessibilityService()
         startWifiMonitorService()
@@ -49,6 +63,7 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         loadProfiles()
+        checkAccessibilityService() // Re-check when returning to app
     }
 
     private fun setupToolbar() {
@@ -79,11 +94,35 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun setupAccessibilityBanner() {
+        accessibilityBanner = findViewById(R.id.accessibilityBanner)
+        findViewById<android.widget.Button>(R.id.btnOpenAccessibilitySettings).setOnClickListener {
+            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+            startActivity(intent)
+        }
+        findViewById<android.widget.Button>(R.id.btnDismissBanner).setOnClickListener {
+            accessibilityBanner.visibility = View.GONE
+        }
+    }
+
     private fun loadProfiles() {
         activityScope.launch {
-            profiles = profileStorage.loadProfiles()
-            adapter.updateProfiles(profiles)
-            updateEmptyView()
+            try {
+                profiles = profileStorage.loadProfiles()
+                adapter.updateProfiles(profiles)
+                updateEmptyView()
+            } catch (e: AppException) {
+                showError(e.getUserMessage())
+                // Use empty list as fallback
+                profiles = emptyList()
+                adapter.updateProfiles(profiles)
+                updateEmptyView()
+            } catch (e: Exception) {
+                showError("An unexpected error occurred. Please try again.")
+                profiles = emptyList()
+                adapter.updateProfiles(profiles)
+                updateEmptyView()
+            }
         }
     }
 
@@ -104,13 +143,43 @@ class MainActivity : AppCompatActivity() {
         }
         startActivity(intent)
     }
+    
+    private fun showTemplateSelectionDialog() {
+        val templates = com.example.wificaptive.core.profile.ProfileTemplates.getAllTemplates()
+        val templateNames = templates.map { "${it.name} - ${it.description}" }
+        
+        AlertDialog.Builder(this)
+            .setTitle(R.string.select_template)
+            .setItems(templateNames.toTypedArray()) { _, which ->
+                val selectedTemplate = templates[which]
+                val intent = Intent(this, ProfileEditorActivity::class.java)
+                intent.putExtra(ProfileEditorActivity.EXTRA_TEMPLATE_NAME, selectedTemplate.name)
+                startActivity(intent)
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
 
     private fun toggleProfile(profile: PortalProfile, enabled: Boolean) {
         activityScope.launch {
-            val updatedProfile = profile.copy(enabled = enabled)
-            profileStorage.updateProfile(updatedProfile)
-            loadProfiles()
+            try {
+                val updatedProfile = profile.copy(enabled = enabled)
+                profileStorage.updateProfile(updatedProfile)
+                loadProfiles()
+            } catch (e: AppException) {
+                showError(e.getUserMessage())
+            } catch (e: Exception) {
+                showError("Failed to update profile. Please try again.")
+            }
         }
+    }
+    
+    private fun showError(message: String) {
+        AlertDialog.Builder(this)
+            .setTitle("Error")
+            .setMessage(message)
+            .setPositiveButton("OK", null)
+            .show()
     }
 
     private fun checkAccessibilityService() {
@@ -124,19 +193,37 @@ class MainActivity : AppCompatActivity() {
         }
         
         if (!serviceEnabled) {
-            showAccessibilityDialog()
+            showAccessibilityBanner()
+            // Show dialog only on first launch or if user hasn't dismissed banner
+            val prefs = getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+            val hasShownDialog = prefs.getBoolean("accessibility_dialog_shown", false)
+            if (!hasShownDialog) {
+                showAccessibilityDialog()
+                prefs.edit().putBoolean("accessibility_dialog_shown", true).apply()
+            }
+        } else {
+            hideAccessibilityBanner()
         }
+    }
+
+    private fun showAccessibilityBanner() {
+        accessibilityBanner.visibility = View.VISIBLE
+    }
+
+    private fun hideAccessibilityBanner() {
+        accessibilityBanner.visibility = View.GONE
     }
 
     private fun showAccessibilityDialog() {
         AlertDialog.Builder(this)
-            .setTitle("Accessibility Service Required")
-            .setMessage(getString(R.string.enable_accessibility))
-            .setPositiveButton("Open Settings") { _, _ ->
+            .setTitle(R.string.accessibility_explanation_title)
+            .setMessage(R.string.accessibility_explanation_message)
+            .setPositiveButton(R.string.open_settings) { _, _ ->
                 val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
                 startActivity(intent)
             }
-            .setNegativeButton("Later", null)
+            .setNegativeButton(R.string.dismiss, null)
+            .setCancelable(true)
             .show()
     }
 
@@ -159,6 +246,10 @@ class MainActivity : AppCompatActivity() {
             R.id.menu_accessibility -> {
                 val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
                 startActivity(intent)
+                true
+            }
+            R.id.action_template -> {
+                showTemplateSelectionDialog()
                 true
             }
             else -> super.onOptionsItemSelected(item)
