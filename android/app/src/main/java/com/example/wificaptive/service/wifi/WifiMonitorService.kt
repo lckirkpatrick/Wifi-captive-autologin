@@ -36,6 +36,18 @@ import kotlinx.coroutines.isActive
 import java.net.HttpURLConnection
 import java.net.URL
 
+/**
+ * Foreground service that monitors Wi-Fi connections and triggers
+ * captive portal automation when a matching profile is detected.
+ * 
+ * This service:
+ * - Monitors network state changes via ConnectivityManager
+ * - Detects when connected to a Wi-Fi network matching a profile
+ * - Triggers the captive portal by making HTTP requests
+ * - Optionally validates connectivity and handles reconnections
+ * 
+ * The service runs in the foreground with a persistent notification.
+ */
 class WifiMonitorService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private lateinit var profileStorage: ProfileStorage

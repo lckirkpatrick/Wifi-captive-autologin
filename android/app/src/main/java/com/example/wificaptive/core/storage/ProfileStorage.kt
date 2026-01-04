@@ -13,6 +13,15 @@ import kotlinx.serialization.json.Json
 import java.io.File
 import java.io.IOException
 
+/**
+ * Manages persistence of portal profiles using JSON storage.
+ * 
+ * Profiles are stored in a JSON file in the app's private files directory.
+ * Supports encryption via Android Keystore (on Android M+).
+ * Includes in-memory caching for performance.
+ * 
+ * @param context Android context for file access
+ */
 class ProfileStorage(private val context: Context) {
     private val json = Json { 
         prettyPrint = true
@@ -36,6 +45,15 @@ class ProfileStorage(private val context: Context) {
     private var cacheTimestamp: Long = 0
     private val cacheLock = Any()
 
+    /**
+     * Load all profiles from storage.
+     * 
+     * Uses in-memory cache if available, otherwise loads from disk.
+     * Automatically creates default profiles if no profiles file exists.
+     * 
+     * @return List of all profiles
+     * @throws ProfileLoadException if loading fails
+     */
     suspend fun loadProfiles(): List<PortalProfile> = withContext(Dispatchers.IO) {
         // Check cache first
         synchronized(cacheLock) {
@@ -102,6 +120,15 @@ class ProfileStorage(private val context: Context) {
         }
     }
 
+    /**
+     * Save all profiles to storage.
+     * 
+     * Encrypts data if encryption is supported and available.
+     * Updates in-memory cache after successful save.
+     * 
+     * @param profiles List of profiles to save
+     * @throws ProfileSaveException if saving fails
+     */
     suspend fun saveProfiles(profiles: List<PortalProfile>) = withContext(Dispatchers.IO) {
         saveProfilesToDisk(profiles)
         
@@ -186,12 +213,24 @@ class ProfileStorage(private val context: Context) {
         return data.length > 100 && data.matches(Regex("^[A-Za-z0-9+/=]+$"))
     }
 
+    /**
+     * Add a new profile to storage.
+     * 
+     * @param profile The profile to add
+     * @throws ProfileSaveException if saving fails
+     */
     suspend fun addProfile(profile: PortalProfile) = withContext(Dispatchers.IO) {
         val profiles = loadProfiles().toMutableList()
         profiles.add(profile)
         saveProfiles(profiles)
     }
 
+    /**
+     * Update an existing profile in storage.
+     * 
+     * @param profile The profile to update (must have matching id)
+     * @throws ProfileSaveException if saving fails
+     */
     suspend fun updateProfile(profile: PortalProfile) = withContext(Dispatchers.IO) {
         val profiles = loadProfiles().toMutableList()
         val index = profiles.indexOfFirst { it.id == profile.id }
@@ -201,6 +240,12 @@ class ProfileStorage(private val context: Context) {
         }
     }
 
+    /**
+     * Delete a profile from storage.
+     * 
+     * @param profileId The ID of the profile to delete
+     * @throws ProfileSaveException if saving fails
+     */
     suspend fun deleteProfile(profileId: String) = withContext(Dispatchers.IO) {
         val profiles = loadProfiles().toMutableList()
         profiles.removeAll { it.id == profileId }

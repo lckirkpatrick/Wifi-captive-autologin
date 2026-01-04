@@ -28,6 +28,17 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import java.util.UUID
 
+/**
+ * Activity for creating or editing portal profiles.
+ * 
+ * Provides a form interface for configuring:
+ * - SSID matching (with dropdown of known networks)
+ * - Match type (EXACT, CONTAINS, REGEX)
+ * - Trigger URL
+ * - Click text patterns
+ * - Timeouts and cooldowns
+ * - Advanced options (connectivity validation, reconnection handling)
+ */
 class ProfileEditorActivity : AppCompatActivity() {
     private val activityScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private lateinit var profileStorage: ProfileStorage
