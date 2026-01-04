@@ -16,6 +16,9 @@ import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.example.wificaptive.R
+import com.example.wificaptive.core.config.AppConfig
+import com.example.wificaptive.core.logging.AppLogger
+import com.example.wificaptive.core.logging.LogContext
 import com.example.wificaptive.core.profile.PortalProfile
 import com.example.wificaptive.core.profile.matchesSsid
 import com.example.wificaptive.core.storage.ProfileStorage
@@ -51,10 +54,18 @@ class WifiMonitorService : Service() {
             // If reconnecting to same SSID and reconnection handling is enabled
             if (wasDisconnected && activeProfile != null && activeProfile!!.enableReconnectionHandling) {
                 val now = System.currentTimeMillis()
-                // If disconnected recently (within last 30 seconds), treat as reconnection
-                if ((now - lastDisconnectTime) < 30000) {
-                    android.util.Log.d(TAG, "Reconnection detected, re-triggering portal")
-                    activeProfile?.let { triggerPortal(it) }
+                // If disconnected recently, treat as reconnection
+                if ((now - lastDisconnectTime) < AppConfig.RECONNECTION_DETECTION_WINDOW_MS) {
+                    activeProfile?.let { profile ->
+                        val context = LogContext(
+                            profileId = profile.id,
+                            ssid = profile.ssid,
+                            triggerUrl = profile.triggerUrl,
+                            additionalData = mapOf("disconnectDurationMs" to (now - lastDisconnectTime).toString())
+                        )
+                        AppLogger.d(TAG, "Reconnection detected, re-triggering portal", context)
+                        triggerPortal(profile)
+                    }
                 }
             }
         }
@@ -145,7 +156,7 @@ class WifiMonitorService : Service() {
                     activeProfile = null
                 }
             } catch (e: Exception) {
-                android.util.Log.e(TAG, "Error checking Wi-Fi", e)
+                AppLogger.e(TAG, "Error checking Wi-Fi", null, e)
             }
         }
     }
@@ -178,15 +189,20 @@ class WifiMonitorService : Service() {
                 // Trigger the captive portal by making a request
                 val url = URL(profile.triggerUrl)
                 connection = url.openConnection() as HttpURLConnection
-                connection.connectTimeout = 5000
-                connection.readTimeout = 5000
+                connection.connectTimeout = AppConfig.PORTAL_TRIGGER_TIMEOUT_MS.toInt()
+                connection.readTimeout = AppConfig.PORTAL_TRIGGER_READ_TIMEOUT_MS.toInt()
                 connection.instanceFollowRedirects = false
                 connection.connect()
                 
                 // Notify accessibility service
                 PortalAccessibilityService.triggerPortalHandling(profile)
             } catch (e: Exception) {
-                android.util.Log.e(TAG, "Error triggering portal", e)
+                val context = LogContext(
+                    profileId = profile.id,
+                    ssid = profile.ssid,
+                    triggerUrl = profile.triggerUrl
+                )
+                AppLogger.e(TAG, "Error triggering portal", context, e)
             } finally {
                 connection?.disconnect()
             }
@@ -214,8 +230,8 @@ class WifiMonitorService : Service() {
                 try {
                     val url = URL(profile.triggerUrl)
                     connection = url.openConnection() as HttpURLConnection
-                    connection.connectTimeout = 5000
-                    connection.readTimeout = 5000
+                    connection.connectTimeout = AppConfig.PORTAL_TRIGGER_TIMEOUT_MS.toInt()
+                    connection.readTimeout = AppConfig.PORTAL_TRIGGER_READ_TIMEOUT_MS.toInt()
                     connection.instanceFollowRedirects = false
                     connection.connect()
                     
@@ -224,11 +240,21 @@ class WifiMonitorService : Service() {
                     if (responseCode == HttpURLConnection.HTTP_MOVED_TEMP || 
                         responseCode == HttpURLConnection.HTTP_SEE_OTHER ||
                         (responseCode == HttpURLConnection.HTTP_OK && connection.url.toString() != profile.triggerUrl)) {
-                        android.util.Log.d(TAG, "Connectivity validation detected portal, re-triggering")
+                        val context = LogContext(
+                            profileId = profile.id,
+                            ssid = profile.ssid,
+                            triggerUrl = profile.triggerUrl
+                        )
+                        AppLogger.d(TAG, "Connectivity validation detected portal, re-triggering", context)
                         triggerPortal(profile)
                     }
                 } catch (e: Exception) {
-                    android.util.Log.d(TAG, "Connectivity validation check failed", e)
+                    val context = LogContext(
+                        profileId = profile.id,
+                        ssid = profile.ssid,
+                        triggerUrl = profile.triggerUrl
+                    )
+                    AppLogger.e(TAG, "Connectivity validation check failed", context, e)
                     // If connection fails, might need to re-authenticate
                     triggerPortal(profile)
                 } finally {

@@ -16,6 +16,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.example.wificaptive.R
+import com.example.wificaptive.core.config.AppConfig
+import com.example.wificaptive.core.logging.AppLogger
 import com.example.wificaptive.core.profile.MatchType
 import com.example.wificaptive.core.profile.PortalProfile
 import com.example.wificaptive.core.storage.ProfileStorage
@@ -230,7 +232,7 @@ class ProfileEditorActivity : AppCompatActivity() {
                 }
             }
         } catch (e: Exception) {
-            android.util.Log.e("ProfileEditor", "Error getting Wi-Fi networks", e)
+            AppLogger.e("ProfileEditor", "Error getting Wi-Fi networks", null, e)
         }
         
         return networks.sorted()
@@ -308,8 +310,8 @@ class ProfileEditorActivity : AppCompatActivity() {
             return
         }
 
-        val timeout = timeoutText?.toLongOrNull() ?: 10000L
-        val cooldown = cooldownText?.toLongOrNull() ?: 5000L
+        val timeout = timeoutText?.toLongOrNull() ?: AppConfig.DEFAULT_PROFILE_TIMEOUT_MS
+        val cooldown = cooldownText?.toLongOrNull() ?: AppConfig.DEFAULT_PROFILE_COOLDOWN_MS
         val validationIntervalMinutes = editTextValidationInterval.text?.toString()?.trim()?.toLongOrNull() ?: 5L
         val validationIntervalMs = validationIntervalMinutes * 60000L // Convert to milliseconds
 
@@ -327,7 +329,7 @@ class ProfileEditorActivity : AppCompatActivity() {
             ?.split(",")
             ?.map { it.trim() }
             ?.filter { it.isNotEmpty() }
-            ?: listOf("Accept", "Connect", "Continue")
+            ?: AppConfig.DEFAULT_CLICK_TEXT_OPTIONS
 
         val profile = currentProfile?.copy(
             ssid = ssid,
