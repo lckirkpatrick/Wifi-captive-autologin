@@ -31,6 +31,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var recyclerView: RecyclerView
     private lateinit var emptyView: TextView
     private lateinit var adapter: ProfileAdapter
+    private lateinit var accessibilityBanner: com.google.android.material.card.MaterialCardView
     private var profiles: List<PortalProfile> = emptyList()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -42,6 +43,7 @@ class MainActivity : AppCompatActivity() {
         setupToolbar()
         setupRecyclerView()
         setupFab()
+        setupAccessibilityBanner()
         
         checkAccessibilityService()
         startWifiMonitorService()
@@ -50,6 +52,7 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         loadProfiles()
+        checkAccessibilityService() // Re-check when returning to app
     }
 
     private fun setupToolbar() {
@@ -77,6 +80,17 @@ class MainActivity : AppCompatActivity() {
     private fun setupFab() {
         findViewById<FloatingActionButton>(R.id.fab).setOnClickListener {
             openProfileEditor(null)
+        }
+    }
+
+    private fun setupAccessibilityBanner() {
+        accessibilityBanner = findViewById(R.id.accessibilityBanner)
+        findViewById<android.widget.Button>(R.id.btnOpenAccessibilitySettings).setOnClickListener {
+            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+            startActivity(intent)
+        }
+        findViewById<android.widget.Button>(R.id.btnDismissBanner).setOnClickListener {
+            accessibilityBanner.visibility = View.GONE
         }
     }
 
@@ -152,19 +166,37 @@ class MainActivity : AppCompatActivity() {
         }
         
         if (!serviceEnabled) {
-            showAccessibilityDialog()
+            showAccessibilityBanner()
+            // Show dialog only on first launch or if user hasn't dismissed banner
+            val prefs = getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+            val hasShownDialog = prefs.getBoolean("accessibility_dialog_shown", false)
+            if (!hasShownDialog) {
+                showAccessibilityDialog()
+                prefs.edit().putBoolean("accessibility_dialog_shown", true).apply()
+            }
+        } else {
+            hideAccessibilityBanner()
         }
+    }
+
+    private fun showAccessibilityBanner() {
+        accessibilityBanner.visibility = View.VISIBLE
+    }
+
+    private fun hideAccessibilityBanner() {
+        accessibilityBanner.visibility = View.GONE
     }
 
     private fun showAccessibilityDialog() {
         AlertDialog.Builder(this)
-            .setTitle("Accessibility Service Required")
-            .setMessage(getString(R.string.enable_accessibility))
-            .setPositiveButton("Open Settings") { _, _ ->
+            .setTitle(R.string.accessibility_explanation_title)
+            .setMessage(R.string.accessibility_explanation_message)
+            .setPositiveButton(R.string.open_settings) { _, _ ->
                 val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
                 startActivity(intent)
             }
-            .setNegativeButton("Later", null)
+            .setNegativeButton(R.string.dismiss, null)
+            .setCancelable(true)
             .show()
     }
 
