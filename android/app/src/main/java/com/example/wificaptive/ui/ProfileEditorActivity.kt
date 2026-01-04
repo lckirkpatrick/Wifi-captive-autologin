@@ -69,7 +69,25 @@ class ProfileEditorActivity : AppCompatActivity() {
         setupToolbar()
         setupViews()
         setupSpinner()
-        loadProfile()
+        
+        val profileId = intent.getStringExtra(EXTRA_PROFILE_ID)
+        val templateName = intent.getStringExtra(EXTRA_TEMPLATE_NAME)
+        
+        if (profileId != null) {
+            // Editing existing profile
+            loadProfile(profileId)
+        } else if (templateName != null) {
+            // Creating from template
+            val template = com.example.wificaptive.core.profile.ProfileTemplates.getTemplate(templateName)
+            if (template != null) {
+                setupFromTemplate(template)
+            } else {
+                setupNewProfile()
+            }
+        } else {
+            // Creating new profile
+            setupNewProfile()
+        }
         
         // Request location permission if needed for Wi-Fi scanning
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -270,23 +288,47 @@ class ProfileEditorActivity : AppCompatActivity() {
         spinnerMatchType.adapter = adapter
     }
 
-    private fun loadProfile() {
-        val profileId = intent.getStringExtra(EXTRA_PROFILE_ID)
-        if (profileId != null) {
-            activityScope.launch {
-                val profiles = profileStorage.loadProfiles()
-                currentProfile = profiles.firstOrNull { it.id == profileId }
-                currentProfile?.let { populateFields(it) }
-                
-                if (currentProfile == null) {
-                    finish()
-                } else {
-                    buttonDelete.visibility = android.view.View.VISIBLE
-                }
+    private fun loadProfile(profileId: String) {
+        activityScope.launch {
+            val profiles = profileStorage.loadProfiles()
+            currentProfile = profiles.firstOrNull { it.id == profileId }
+            currentProfile?.let { populateFields(it) }
+            
+            if (currentProfile == null) {
+                finish()
+            } else {
+                buttonDelete.visibility = android.view.View.VISIBLE
             }
-        } else {
-            buttonDelete.visibility = android.view.View.GONE
         }
+    }
+    
+    private fun setupNewProfile() {
+        // Initialize with default values
+        buttonDelete.visibility = android.view.View.GONE
+        switchEnabled.isChecked = true
+    }
+    
+    private fun setupFromTemplate(template: com.example.wificaptive.core.profile.ProfileTemplate) {
+        // Populate fields from template
+        editTextSsid.setText(template.defaultSsid)
+        
+        val matchTypePosition = when (template.matchType) {
+            MatchType.EXACT -> 0
+            MatchType.CONTAINS -> 1
+            MatchType.REGEX -> 2
+        }
+        spinnerMatchType.setSelection(matchTypePosition)
+        
+        editTextTriggerUrl.setText(template.triggerUrl)
+        editTextClickTextExact.setText(template.clickTextExact ?: "")
+        editTextClickTextContains.setText(template.clickTextContains.joinToString(", "))
+        editTextTimeout.setText(template.timeoutMs.toString())
+        editTextCooldown.setText(template.cooldownMs.toString())
+        switchEnabled.isChecked = true
+        switchEnableConnectivityValidation.isChecked = template.enableConnectivityValidation
+        editTextValidationInterval.setText((template.validationIntervalMs / 60000).toString())
+        switchEnableReconnectionHandling.isChecked = template.enableReconnectionHandling
+        buttonDelete.visibility = android.view.View.GONE
     }
 
     private fun populateFields(profile: PortalProfile) {
@@ -426,6 +468,7 @@ class ProfileEditorActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_PROFILE_ID = "profile_id"
+        const val EXTRA_TEMPLATE_NAME = "template_name"
         private const val REQUEST_LOCATION_PERMISSION = 1001
     }
 }

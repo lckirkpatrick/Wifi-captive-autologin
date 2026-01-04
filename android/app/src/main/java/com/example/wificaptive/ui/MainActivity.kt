@@ -132,6 +132,22 @@ class MainActivity : AppCompatActivity() {
         }
         startActivity(intent)
     }
+    
+    private fun showTemplateSelectionDialog() {
+        val templates = com.example.wificaptive.core.profile.ProfileTemplates.getAllTemplates()
+        val templateNames = templates.map { "${it.name} - ${it.description}" }
+        
+        AlertDialog.Builder(this)
+            .setTitle(R.string.select_template)
+            .setItems(templateNames.toTypedArray()) { _, which ->
+                val selectedTemplate = templates[which]
+                val intent = Intent(this, ProfileEditorActivity::class.java)
+                intent.putExtra(ProfileEditorActivity.EXTRA_TEMPLATE_NAME, selectedTemplate.name)
+                startActivity(intent)
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
 
     private fun toggleProfile(profile: PortalProfile, enabled: Boolean) {
         activityScope.launch {
@@ -219,6 +235,10 @@ class MainActivity : AppCompatActivity() {
             R.id.menu_accessibility -> {
                 val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
                 startActivity(intent)
+                true
+            }
+            R.id.action_template -> {
+                showTemplateSelectionDialog()
                 true
             }
             else -> super.onOptionsItemSelected(item)
