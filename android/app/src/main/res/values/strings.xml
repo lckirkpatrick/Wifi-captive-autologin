@@ -27,5 +27,14 @@
     <string name="select_template">Select Template</string>
     <string name="create_from_template">Create from Template</string>
     <string name="no_template">No Template</string>
+    <string name="next">Next</string>
+    <string name="skip">Skip</string>
+    <string name="get_started">Get Started</string>
+    <string name="onboarding_welcome_title">Welcome to WiFi Captive Auto-Login</string>
+    <string name="onboarding_welcome_message">Automatically accept terms on captive portal Wi-Fi networks. No more manual clicking!</string>
+    <string name="onboarding_accessibility_title">Enable Accessibility Service</string>
+    <string name="onboarding_accessibility_message">To automatically click portal buttons, you need to enable the accessibility service. Tap the button below to open settings.</string>
+    <string name="onboarding_getting_started_title">You\'re All Set!</string>
+    <string name="onboarding_getting_started_message">1. Add profiles for your Wi-Fi networks\n2. Enable profiles you want to use\n3. The app will automatically handle captive portals\n\nYou can always add more profiles later from the main screen.</string>
 </resources>
 
