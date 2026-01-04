@@ -14,7 +14,7 @@ data class PortalProfile(
     val cooldownMs: Long,
     val enabled: Boolean,
     val enableConnectivityValidation: Boolean = false,
-    val validationIntervalMs: Long = 300000L, // 5 minutes default
+    val validationIntervalMs: Long = 300000L, // Default: 5 minutes (use AppConfig.DEFAULT_VALIDATION_INTERVAL_MS in code)
     val enableReconnectionHandling: Boolean = false
 )
 

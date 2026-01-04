@@ -1,6 +1,7 @@
 package com.example.wificaptive.core.storage
 
 import android.content.Context
+import com.example.wificaptive.core.config.AppConfig
 import com.example.wificaptive.core.profile.PortalProfile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -16,7 +17,7 @@ class ProfileStorage(private val context: Context) {
     }
     
     private val profilesFile: File by lazy {
-        File(context.filesDir, "profiles.json")
+        File(context.filesDir, AppConfig.PROFILES_FILENAME)
     }
 
     suspend fun loadProfiles(): List<PortalProfile> = withContext(Dispatchers.IO) {
@@ -79,9 +80,9 @@ class ProfileStorage(private val context: Context) {
                 matchType = com.example.wificaptive.core.profile.MatchType.REGEX,
                 triggerUrl = "http://captive.apple.com",
                 clickTextExact = null,
-                clickTextContains = listOf("Accept", "Connect", "Continue"),
-                timeoutMs = 10000L,
-                cooldownMs = 5000L,
+                clickTextContains = AppConfig.DEFAULT_CLICK_TEXT_OPTIONS,
+                timeoutMs = AppConfig.DEFAULT_PROFILE_TIMEOUT_MS,
+                cooldownMs = AppConfig.DEFAULT_PROFILE_COOLDOWN_MS,
                 enabled = true
             ),
             PortalProfile(
