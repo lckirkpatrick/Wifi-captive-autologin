@@ -17,5 +17,11 @@
     <string name="delete">Delete</string>
     <string name="no_profiles">No profiles configured</string>
     <string name="enable_accessibility">Please enable accessibility service in settings</string>
+    <string name="accessibility_explanation_title">Accessibility Service Required</string>
+    <string name="accessibility_explanation_message">This app uses Android\'s Accessibility Service to automatically click \"Accept\" or \"Connect\" buttons on captive portal pages.\n\nWhy is this needed?\n• Captive portals require user interaction to accept terms\n• The accessibility service allows the app to automate this safely\n• The service only interacts with captive portal pages, not other apps\n\nHow to enable:\n1. Tap \"Open Settings\" below\n2. Find \"WiFi Captive Auto-Login\" in the list\n3. Toggle it ON\n4. Return to this app</string>
+    <string name="accessibility_banner_title">Accessibility Service Not Enabled</string>
+    <string name="accessibility_banner_message">Enable the accessibility service to automatically accept captive portal terms.</string>
+    <string name="open_settings">Open Settings</string>
+    <string name="dismiss">Dismiss</string>
 </resources>
 
