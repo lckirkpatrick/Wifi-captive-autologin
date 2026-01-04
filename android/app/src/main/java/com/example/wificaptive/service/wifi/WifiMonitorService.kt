@@ -46,19 +46,25 @@ class WifiMonitorService : Service() {
     private var lastDisconnectTime: Long = 0
     private var validationJob: Job? = null
     private var activeProfile: PortalProfile? = null
+    
+    // Debouncing for network state changes
+    private var debounceJob: Job? = null
+    private val NETWORK_DEBOUNCE_MS = 1000L // 1 second debounce
 
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
-            val wasDisconnected = currentSsid == null
-            checkWifiAndTrigger()
-            
-            // If reconnecting to same SSID and reconnection handling is enabled
-            if (wasDisconnected && activeProfile != null && activeProfile!!.enableReconnectionHandling) {
-                val now = System.currentTimeMillis()
-                // If disconnected recently (within last 30 seconds), treat as reconnection
-                if ((now - lastDisconnectTime) < 30000) {
-                    android.util.Log.d(TAG, "Reconnection detected, re-triggering portal")
-                    activeProfile?.let { triggerPortal(it) }
+            debounceNetworkChange {
+                val wasDisconnected = currentSsid == null
+                checkWifiAndTrigger()
+                
+                // If reconnecting to same SSID and reconnection handling is enabled
+                if (wasDisconnected && activeProfile != null && activeProfile!!.enableReconnectionHandling) {
+                    val now = System.currentTimeMillis()
+                    // If disconnected recently (within last 30 seconds), treat as reconnection
+                    if ((now - lastDisconnectTime) < 30000) {
+                        android.util.Log.d(TAG, "Reconnection detected, re-triggering portal")
+                        activeProfile?.let { triggerPortal(it) }
+                    }
                 }
             }
         }
@@ -68,7 +74,9 @@ class WifiMonitorService : Service() {
             networkCapabilities: NetworkCapabilities
         ) {
             if (networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
-                checkWifiAndTrigger()
+                debounceNetworkChange {
+                    checkWifiAndTrigger()
+                }
             }
         }
 
@@ -109,6 +117,19 @@ class WifiMonitorService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         connectivityManager.unregisterNetworkCallback(networkCallback)
+        debounceJob?.cancel()
+        validationJob?.cancel()
+    }
+    
+    /**
+     * Debounce network state changes to prevent rapid repeated triggers
+     */
+    private fun debounceNetworkChange(action: suspend () -> Unit) {
+        debounceJob?.cancel()
+        debounceJob = serviceScope.launch(Dispatchers.IO) {
+            delay(NETWORK_DEBOUNCE_MS)
+            action()
+        }
     }
 
     private fun checkWifiAndTrigger() {
