@@ -16,6 +16,7 @@ import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.example.wificaptive.R
+import com.example.wificaptive.core.driver.DriverRegistry
 import com.example.wificaptive.core.error.ConnectivityCheckException
 import com.example.wificaptive.core.error.NetworkException
 import com.example.wificaptive.core.error.PortalTriggerException
@@ -216,8 +217,14 @@ class WifiMonitorService : Service() {
                 connection.instanceFollowRedirects = false
                 connection.connect()
                 
-                // Notify accessibility service
-                PortalAccessibilityService.triggerPortalHandling(profile)
+                // Use driver registry to handle portal
+                val driver = DriverRegistry.getDefaultDriver()
+                if (driver != null && driver.isAvailable()) {
+                    driver.handlePortal(profile)
+                } else {
+                    // Fallback to direct accessibility service call for backward compatibility
+                    PortalAccessibilityService.triggerPortalHandling(profile)
+                }
             } catch (e: java.net.SocketTimeoutException) {
                 throw PortalTriggerException("Connection timeout while triggering portal", e)
             } catch (e: java.net.UnknownHostException) {

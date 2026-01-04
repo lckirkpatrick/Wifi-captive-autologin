@@ -15,6 +15,7 @@ import android.view.accessibility.AccessibilityNodeInfo
 import androidx.core.app.NotificationCompat
 import com.example.wificaptive.R
 import com.example.wificaptive.core.profile.PortalProfile
+import com.example.wificaptive.service.accessibility.AccessibilityServiceDriver
 import com.example.wificaptive.ui.MainActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -332,6 +333,9 @@ class PortalAccessibilityService : AccessibilityService() {
         super.onServiceConnected()
         instance = this
         Log.d(TAG, "Accessibility service connected")
+        
+        // Register the accessibility service driver
+        AccessibilityServiceDriver.createAndRegister(this)
     }
 
     override fun onDestroy() {
