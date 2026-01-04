@@ -24,6 +24,18 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
 
+/**
+ * Accessibility service that automates clicking buttons on captive portal pages.
+ * 
+ * This service:
+ * - Listens for window state changes to detect portal pages
+ * - Searches for clickable elements matching profile text patterns
+ * - Automatically clicks "Accept", "Connect", or similar buttons
+ * - Provides user feedback via notifications
+ * - Implements retry logic for reliability
+ * 
+ * Must be enabled by the user in Android Accessibility settings.
+ */
 class PortalAccessibilityService : AccessibilityService() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val handler = Handler(Looper.getMainLooper())

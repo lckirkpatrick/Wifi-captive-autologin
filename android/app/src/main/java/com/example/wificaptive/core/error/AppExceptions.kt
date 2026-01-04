@@ -4,10 +4,18 @@ package com.example.wificaptive.core.error
  * Application-specific exception types for better error handling.
  * 
  * These exceptions provide context and allow for user-friendly error messages.
+ * All exceptions extend [AppException] which provides a [getUserMessage] method
+ * for displaying user-friendly error messages in the UI.
  */
 
 /**
- * Base exception for all application errors
+ * Base exception for all application errors.
+ * 
+ * Provides a mechanism for converting technical error messages into
+ * user-friendly messages suitable for display in the UI.
+ * 
+ * @param message Technical error message for logging/debugging
+ * @param cause The underlying exception that caused this error (optional)
  */
 sealed class AppException(message: String, cause: Throwable? = null) : Exception(message, cause) {
     /**
