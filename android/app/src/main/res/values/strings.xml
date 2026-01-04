@@ -23,5 +23,9 @@
     <string name="accessibility_banner_message">Enable the accessibility service to automatically accept captive portal terms.</string>
     <string name="open_settings">Open Settings</string>
     <string name="dismiss">Dismiss</string>
+    <string name="use_template">Use Template</string>
+    <string name="select_template">Select Template</string>
+    <string name="create_from_template">Create from Template</string>
+    <string name="no_template">No Template</string>
 </resources>
 
