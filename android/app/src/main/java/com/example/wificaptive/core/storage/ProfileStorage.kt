@@ -1,13 +1,17 @@
 package com.example.wificaptive.core.storage
 
 import android.content.Context
+import com.example.wificaptive.core.error.ProfileLoadException
+import com.example.wificaptive.core.error.ProfileSaveException
 import com.example.wificaptive.core.profile.PortalProfile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import java.io.File
+import java.io.IOException
 
 class ProfileStorage(private val context: Context) {
     private val json = Json { 
@@ -33,11 +37,33 @@ class ProfileStorage(private val context: Context) {
                 return@withContext defaultProfiles
             }
             json.decodeFromString<List<PortalProfile>>(jsonString)
-        } catch (e: Exception) {
-            // If loading fails, return defaults
+        } catch (e: SerializationException) {
+            // If deserialization fails, return defaults
             val defaultProfiles = getDefaultProfiles()
-            saveProfiles(defaultProfiles)
-            defaultProfiles
+            try {
+                saveProfiles(defaultProfiles)
+            } catch (saveException: Exception) {
+                // If we can't save defaults, just return them
+            }
+            throw ProfileLoadException("Failed to deserialize profiles: ${e.message}", e)
+        } catch (e: IOException) {
+            // If file read fails, return defaults
+            val defaultProfiles = getDefaultProfiles()
+            try {
+                saveProfiles(defaultProfiles)
+            } catch (saveException: Exception) {
+                // If we can't save defaults, just return them
+            }
+            throw ProfileLoadException("Failed to read profiles file: ${e.message}", e)
+        } catch (e: Exception) {
+            // For any other exception, return defaults but log the error
+            val defaultProfiles = getDefaultProfiles()
+            try {
+                saveProfiles(defaultProfiles)
+            } catch (saveException: Exception) {
+                // If we can't save defaults, just return them
+            }
+            throw ProfileLoadException("Unexpected error loading profiles: ${e.message}", e)
         }
     }
 
@@ -45,8 +71,12 @@ class ProfileStorage(private val context: Context) {
         try {
             val jsonString = json.encodeToString(profiles)
             profilesFile.writeText(jsonString)
+        } catch (e: SerializationException) {
+            throw ProfileSaveException("Failed to serialize profiles: ${e.message}", e)
+        } catch (e: IOException) {
+            throw ProfileSaveException("Failed to write profiles file: ${e.message}", e)
         } catch (e: Exception) {
-            throw RuntimeException("Failed to save profiles", e)
+            throw ProfileSaveException("Unexpected error saving profiles: ${e.message}", e)
         }
     }
 

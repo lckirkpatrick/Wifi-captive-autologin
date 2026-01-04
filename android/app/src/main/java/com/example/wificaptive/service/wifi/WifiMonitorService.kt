@@ -16,6 +16,10 @@ import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.example.wificaptive.R
+import com.example.wificaptive.core.error.ConnectivityCheckException
+import com.example.wificaptive.core.error.NetworkException
+import com.example.wificaptive.core.error.PortalTriggerException
+import com.example.wificaptive.core.error.ProfileLoadException
 import com.example.wificaptive.core.profile.PortalProfile
 import com.example.wificaptive.core.profile.matchesSsid
 import com.example.wificaptive.core.storage.ProfileStorage
@@ -116,7 +120,13 @@ class WifiMonitorService : Service() {
                 }
                 
                 currentSsid = ssid
-                val profiles = profileStorage.loadProfiles()
+                val profiles = try {
+                    profileStorage.loadProfiles()
+                } catch (e: ProfileLoadException) {
+                    // Log error but continue with empty list
+                    android.util.Log.e(TAG, "Failed to load profiles: ${e.message}", e)
+                    emptyList()
+                }
                 val matchingProfile = profiles.firstOrNull { profile ->
                     profile.enabled && matchesSsid(profile, ssid)
                 }
@@ -144,8 +154,10 @@ class WifiMonitorService : Service() {
                     validationJob = null
                     activeProfile = null
                 }
+            } catch (e: ProfileLoadException) {
+                android.util.Log.e(TAG, "Error loading profiles: ${e.message}", e)
             } catch (e: Exception) {
-                android.util.Log.e(TAG, "Error checking Wi-Fi", e)
+                android.util.Log.e(TAG, "Error checking Wi-Fi: ${e.message}", e)
             }
         }
     }
@@ -185,8 +197,14 @@ class WifiMonitorService : Service() {
                 
                 // Notify accessibility service
                 PortalAccessibilityService.triggerPortalHandling(profile)
+            } catch (e: java.net.SocketTimeoutException) {
+                throw PortalTriggerException("Connection timeout while triggering portal", e)
+            } catch (e: java.net.UnknownHostException) {
+                throw PortalTriggerException("Cannot resolve host: ${profile.triggerUrl}", e)
+            } catch (e: java.io.IOException) {
+                throw PortalTriggerException("Network I/O error: ${e.message}", e)
             } catch (e: Exception) {
-                android.util.Log.e(TAG, "Error triggering portal", e)
+                throw PortalTriggerException("Unexpected error triggering portal: ${e.message}", e)
             } finally {
                 connection?.disconnect()
             }
@@ -228,9 +246,14 @@ class WifiMonitorService : Service() {
                         triggerPortal(profile)
                     }
                 } catch (e: Exception) {
-                    android.util.Log.d(TAG, "Connectivity validation check failed", e)
+                    // Log connectivity check failure but don't throw - this is expected if portal is active
+                    android.util.Log.d(TAG, "Connectivity validation check failed: ${e.message}", e)
                     // If connection fails, might need to re-authenticate
-                    triggerPortal(profile)
+                    try {
+                        triggerPortal(profile)
+                    } catch (triggerException: PortalTriggerException) {
+                        android.util.Log.e(TAG, "Failed to re-trigger portal after connectivity check: ${triggerException.message}", triggerException)
+                    }
                 } finally {
                     connection?.disconnect()
                 }
