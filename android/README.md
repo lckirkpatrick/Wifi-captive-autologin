@@ -108,6 +108,10 @@ The app comes with two default profiles:
 - **service/accessibility**: UI automation engine for clicking portal buttons
 - **ui**: Profile management interface (list, add, edit)
 
+### Troubleshooting
+
+If you encounter issues, please see the [Troubleshooting Guide](../../TROUBLESHOOTING.md) for common problems and solutions.
+
 ### Notes
 
 - The app uses a foreground service to continuously monitor Wi-Fi connections
