@@ -16,6 +16,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.example.wificaptive.R
+import com.example.wificaptive.core.error.AppException
+import com.example.wificaptive.core.error.MissingRequiredFieldException
 import com.example.wificaptive.core.profile.MatchType
 import com.example.wificaptive.core.profile.PortalProfile
 import com.example.wificaptive.core.storage.ProfileStorage
@@ -303,8 +305,12 @@ class ProfileEditorActivity : AppCompatActivity() {
         val timeoutText = editTextTimeout.text?.toString()?.trim()
         val cooldownText = editTextCooldown.text?.toString()?.trim()
 
-        if (ssid.isNullOrEmpty() || triggerUrl.isNullOrEmpty()) {
-            showError("SSID and Trigger URL are required")
+        if (ssid.isNullOrEmpty()) {
+            showError(MissingRequiredFieldException("SSID").getUserMessage())
+            return
+        }
+        if (triggerUrl.isNullOrEmpty()) {
+            showError(MissingRequiredFieldException("Trigger URL").getUserMessage())
             return
         }
 
@@ -357,12 +363,18 @@ class ProfileEditorActivity : AppCompatActivity() {
         )
 
         activityScope.launch {
-            if (currentProfile == null) {
-                profileStorage.addProfile(profile)
-            } else {
-                profileStorage.updateProfile(profile)
+            try {
+                if (currentProfile == null) {
+                    profileStorage.addProfile(profile)
+                } else {
+                    profileStorage.updateProfile(profile)
+                }
+                finish()
+            } catch (e: AppException) {
+                showError(e.getUserMessage())
+            } catch (e: Exception) {
+                showError("Failed to save profile. Please try again.")
             }
-            finish()
         }
     }
 
@@ -374,8 +386,14 @@ class ProfileEditorActivity : AppCompatActivity() {
             .setMessage("Are you sure you want to delete this profile?")
             .setPositiveButton("Delete") { _, _ ->
                 activityScope.launch {
-                    profileStorage.deleteProfile(profile.id)
-                    finish()
+                    try {
+                        profileStorage.deleteProfile(profile.id)
+                        finish()
+                    } catch (e: AppException) {
+                        showError(e.getUserMessage())
+                    } catch (e: Exception) {
+                        showError("Failed to delete profile. Please try again.")
+                    }
                 }
             }
             .setNegativeButton("Cancel", null)

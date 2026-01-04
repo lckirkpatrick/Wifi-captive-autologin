@@ -15,6 +15,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.wificaptive.R
+import com.example.wificaptive.core.error.AppException
 import com.example.wificaptive.core.profile.PortalProfile
 import com.example.wificaptive.core.storage.ProfileStorage
 import com.example.wificaptive.service.wifi.WifiMonitorService
@@ -81,9 +82,22 @@ class MainActivity : AppCompatActivity() {
 
     private fun loadProfiles() {
         activityScope.launch {
-            profiles = profileStorage.loadProfiles()
-            adapter.updateProfiles(profiles)
-            updateEmptyView()
+            try {
+                profiles = profileStorage.loadProfiles()
+                adapter.updateProfiles(profiles)
+                updateEmptyView()
+            } catch (e: AppException) {
+                showError(e.getUserMessage())
+                // Use empty list as fallback
+                profiles = emptyList()
+                adapter.updateProfiles(profiles)
+                updateEmptyView()
+            } catch (e: Exception) {
+                showError("An unexpected error occurred. Please try again.")
+                profiles = emptyList()
+                adapter.updateProfiles(profiles)
+                updateEmptyView()
+            }
         }
     }
 
@@ -107,10 +121,24 @@ class MainActivity : AppCompatActivity() {
 
     private fun toggleProfile(profile: PortalProfile, enabled: Boolean) {
         activityScope.launch {
-            val updatedProfile = profile.copy(enabled = enabled)
-            profileStorage.updateProfile(updatedProfile)
-            loadProfiles()
+            try {
+                val updatedProfile = profile.copy(enabled = enabled)
+                profileStorage.updateProfile(updatedProfile)
+                loadProfiles()
+            } catch (e: AppException) {
+                showError(e.getUserMessage())
+            } catch (e: Exception) {
+                showError("Failed to update profile. Please try again.")
+            }
         }
+    }
+    
+    private fun showError(message: String) {
+        AlertDialog.Builder(this)
+            .setTitle("Error")
+            .setMessage(message)
+            .setPositiveButton("OK", null)
+            .show()
     }
 
     private fun checkAccessibilityService() {
